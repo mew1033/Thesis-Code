@@ -1,0 +1,54 @@
+#!/bin/bash
+set -x
+exec > >(tee /var/log/user-data.log ) 2>&1
+echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+echo "net.ipv4.conf.all.rp_filter = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.default.rp_filter = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.eth0.rp_filter = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.eth1.rp_filter = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.eth2.rp_filter = 0" >> /etc/sysctl.conf
+echo "net.ipv4.conf.lo.rp_filter = 0" >> /etc/sysctl.conf
+echo GATEWAY=10.0.1.1 >> /etc/sysconfig/network
+sysctl -p
+
+cp /etc/sysconfig/network-scripts/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth1
+sed -i 's/"eth0"/"eth1"/' /etc/sysconfig/network-scripts/ifcfg-eth1
+echo "HWADDR=$(cat /sys/class/net/eth1/address | tr -d '\n' | tr -d ' ')" >> /etc/sysconfig/network-scripts/ifcfg-eth1
+cp /etc/sysconfig/network-scripts/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth2
+sed -i 's/"eth0"/"eth2"/' /etc/sysconfig/network-scripts/ifcfg-eth2
+echo "HWADDR=$(cat /sys/class/net/eth2/address | tr -d '\n' | tr -d ' ')" >> /etc/sysconfig/network-scripts/ifcfg-eth2
+echo ZONE=internal >> /etc/sysconfig/network-scripts/ifcfg-eth0
+echo ZONE=external >> /etc/sysconfig/network-scripts/ifcfg-eth1
+echo ZONE=public >> /etc/sysconfig/network-scripts/ifcfg-eth2
+service network restart
+yum install -y firewalld
+
+# iptables -t mangle -I PREROUTING -i eth0 -p tcp -s 10.0.2.50 -j MARK --set-mark 2
+# iptables -t nat -A POSTROUTING ! -s 10.0.2.50 -j MASQUERADE
+# iptables -t nat -I POSTROUTING -s 10.0.2.50 -j SNAT --to-source 10.0.1.10 
+# iptables -t nat -I PREROUTING -i eth1 -j DNAT --to 10.0.2.50
+
+firewall-offline-cmd --zone=external --add-service=dhcpv6-client
+firewall-offline-cmd --zone=public --add-masquerade
+firewall-offline-cmd --zone=public --add-forward-port=port=2222:proto=tcp:toaddr=10.0.2.20:toport=22
+firewall-offline-cmd --direct --add-rule ipv4 nat PREROUTING 0 -i eth1 -j DNAT --to-destination 10.0.2.50
+firewall-offline-cmd --direct --add-rule ipv4 nat POSTROUTING 0 -s 10.0.2.50 -j SNAT --to-source 10.0.1.10
+firewall-offline-cmd --direct --add-rule ipv4 mangle PREROUTING 0 -i eth0 -s 10.0.2.50 -j MARK --set-mark 2
+firewall-offline-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth1 -o eth0 -j ACCEPT
+firewall-offline-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth0 -o eth1 -j ACCEPT
+systemctl restart firewalld.service
+systemctl restart network.service
+
+ip rule add fwmark 2 table 3
+ip route add default via 10.0.1.1 dev eth1 table 3
+ip route flush cache
+sed -i '$iip rule add fwmark 2 table 3\nip route add default via 10.0.1.1 dev eth1 table 3\nip route flush cache' /etc/rc.d/rc.local
+chmod +x /etc/rc.d/rc.local
+sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/root:[^:]*/root:$1$XlQyAlnv$mYaJ3H7Hl5zjxV9enpX2M1/' /etc/shadow
+sed -i 's/centos:[^:]*/centos:$1$XlQyAlnv$mYaJ3H7Hl5zjxV9enpX2M1/' /etc/shadow
+rm -rf /home/centos/.ssh
+rm -rf /root/.ssh
+rm -rf /etc/hostname
+echo firewall >> /etc/hostname
+reboot

@@ -1,0 +1,38 @@
+Linux Servers:
+
+- Nat Gateway:
+-- Gotta disable source/dest checking on the instance
+-- Enable ip_forwarding
+-- iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+-- No security groups. Because we hate security! :-)
+
+- Firewalld router:
+-- In AWS:
+--- Create three ENIs. 2 in the public subnet, one in the private subnet.
+--- Then create two EIPs and associate them with the public subnet ENIs.
+--- Create a t2.medium (so it can have 3 ips) and attach the three interfaces.
+--- TURN OFF SOURCE/DEST CHECK ON ALL INTERFACES
+-- On the host:
+--- set ip forwarding. Probably should do it with sysctl so it sticks
+--- Disable rp_filter! :-)
+--- set gateway in /etc/sysconfig/network
+--- create /etc/sysconfig/network-scripts/ifcfg-ethX files
+--- install firewalld
+
+- Old Joomla: This box will have ALL THE SERVICES. It's an old admin's experiment and should die (via inject). Just gotta keep the compliance links.
+-- In AWS:
+--- ami: ami-09e27439
+--- private ip: 10.0.2.50
+-- On the host:
+--- root:mysupersecurepassword
+--- ubuntu:changeme
+
+
+Windows:
+- Domain Controller
+-- In AWS:
+--- t2.large
+--- private ip: 10.0.2.15
+-- On the host:
+--- hostname: im-the-boss
+--- Administrator:mysupersecurepassword1!
